@@ -1,177 +1,15 @@
-import cv2
 import os
-import time
-import threading
 import customtkinter as ctk
-from tkinter import filedialog, messagebox # Added messagebox
+from tkinter import filedialog, messagebox 
 from collections import deque
+import threading
 import logging
 import datetime
 
-class ImageProcessor:
-    """
-    Handles image processing tasks using OpenCV.
-    """
-    def __init__(self, output_folder="grayscale"):
-        """
-        Initializes the ImageProcessor with an output folder for grayscale images.
 
-        Args:
-            output_folder (str): The path to the folder to save grayscale images.
-        """
-        self.output_folder = output_folder
-        # No need to check for os.path.exists here, will be done before processing
-        # if not os.path.exists(self.output_folder):
-        #     try:
-        #         os.makedirs(self.output_folder)
-        #         logging.info(f"Created output folder: {self.output_folder}")
-        #     except OSError as e:
-        #         logging.error(f"Could not create output folder {self.output_folder}: {e}")
-        #         # Propagate the error or handle it, e.g., by setting a flag
-        #         raise # Or handle differently
-        logging.info(f"ImageProcessor initialized. Output folder set to: {self.output_folder}")
-
-    def _ensure_output_folder_exists(self):
-        """Ensures the output folder exists, creating it if necessary."""
-        if not os.path.exists(self.output_folder):
-            try:
-                os.makedirs(self.output_folder)
-                logging.info(f"Created output folder: {self.output_folder}")
-                return True
-            except OSError as e:
-                logging.error(f"Could not create output folder {self.output_folder}: {e}")
-                # Potentially show a message to the user via the main app's log
-                return False
-        return True
-
-
-    def convert_to_grayscale(self, image_path, filename):
-        """
-        Converts an image to grayscale and saves it to the output folder.
-
-        Args:
-            image_path (str): Path to the input image.
-            filename (str): Name of the image file.
-
-        Returns:
-            str: Path to the saved grayscale image, or None on failure.
-        """
-        if not self._ensure_output_folder_exists():
-            # Log this specific failure within the app's UI log if possible
-            # For now, relying on standard logging
-            return None
-        try:
-            img = cv2.imread(image_path)
-            if img is None:
-                logging.error(f"Could not read image: {image_path}")
-                return None
-
-            gray_img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            # Ensure filename doesn't have path components if it's just a name
-            base_filename = os.path.basename(filename)
-            output_path = os.path.join(self.output_folder, base_filename)
-
-            cv2.imwrite(output_path, gray_img)
-            logging.info(f"Converted to grayscale: {base_filename}, saved to {output_path}")
-            return output_path
-        except Exception as e:
-            logging.error(f"Error converting {image_path} to grayscale: {e}")
-            return None
-
-    def delete_original(self, image_path):
-        """
-        Deletes the original image file.
-
-        Args:
-            image_path (str): Path to the image to delete.
-        """
-        try:
-            os.remove(image_path)
-            logging.info(f"Deleted original image: {image_path}")
-        except Exception as e:
-            logging.error(f"Error deleting {image_path}: {e}")
-
-class FileWatcher:
-    """
-    Monitors a folder for new image files and processes them.
-    """
-    def __init__(self, folder_path, image_processor, log_queue_callback, update_interval=1):
-        """
-        Initializes the FileWatcher.
-
-        Args:
-            folder_path (str): Path to the folder to monitor.
-            image_processor (ImageProcessor): Instance of ImageProcessor to handle image processing.
-            log_queue_callback (function): Callback function to add messages to the app's log queue.
-            update_interval (int): How often to check for new files, in seconds.  Defaults to 1.
-        """
-        self.folder_path = folder_path
-        self.image_processor = image_processor
-        self.log_queue_callback = log_queue_callback # Use callback for logging to app
-        self.update_interval = update_interval
-        self.stop_flag = threading.Event()
-        self.processed_files = set()
-
-    def watch(self):
-        """
-        Starts monitoring the folder for new image files.
-        """
-        self.log_message_to_app(f"Watching folder: {self.folder_path}")
-        while not self.stop_flag.is_set():
-            try:
-                # Check if folder still exists
-                if not os.path.exists(self.folder_path):
-                    self.log_message_to_app(f"Error: Monitored folder {self.folder_path} no longer exists. Stopping watch.")
-                    logging.error(f"Monitored folder {self.folder_path} no longer exists.")
-                    break # Exit the loop
-
-                files = [f for f in os.listdir(self.folder_path)
-                           if os.path.isfile(os.path.join(self.folder_path, f)) and
-                              f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
-                for filename in files:
-                    if self.stop_flag.is_set(): break # Check stop flag frequently
-                    image_path = os.path.join(self.folder_path, filename)
-                    # Check if file still exists before processing (it might be moved/deleted quickly)
-                    if not os.path.exists(image_path):
-                        self.processed_files.discard(filename) # Remove if it was somehow added then disappeared
-                        continue
-
-                    if filename not in self.processed_files:
-                        self.log_message_to_app(f"New image detected: {filename}")
-                        gray_path = self.image_processor.convert_to_grayscale(image_path, filename)
-                        if gray_path:
-                            self.image_processor.delete_original(image_path)
-                            self.log_message_to_app(f"Processed and original deleted: {filename}")
-                        else:
-                            self.log_message_to_app(f"Failed to process: {filename}")
-                        self.processed_files.add(filename)
-                if self.stop_flag.is_set(): break
-                time.sleep(self.update_interval)
-            except FileNotFoundError:
-                 self.log_message_to_app(f"Error: Monitored folder {self.folder_path} not found. Stopping watch.")
-                 logging.error(f"Monitored folder {self.folder_path} not found during watch.")
-                 break # Exit the loop
-            except Exception as e:
-                logging.error(f"Error watching folder {self.folder_path}: {e}")
-                self.log_message_to_app(f"Error in watcher: {e}")
-                time.sleep(self.update_interval * 2) # Sleep longer on generic error
-
-        self.log_message_to_app("File watcher stopped.")
-
-
-    def log_message_to_app(self, message):
-        """
-        Uses the callback to add a message to the main application's log queue.
-        """
-        self.log_queue_callback(message) # The callback will handle timestamping
-
-    def stop(self):
-        """
-        Sets the stop flag, signaling the watching thread to exit.
-        """
-        self.stop_flag.set()
-        logging.info("Stopping file watcher signaled.")
-
+#From utility Module
+from utility import FileWatcher 
+from utility import ImageProcessor
 
 class ImageProcessingApp(object):
     """
@@ -182,11 +20,12 @@ class ImageProcessingApp(object):
         Initializes the main application window.
         """
         self.root = root_window
-        self.root.title("Pro Image Watcher & Converter")
+        self.root.title("GrayScaler Converter")
         self.root.geometry("750x550")
+        self.root.iconbitmap(r"icon\icon.png")
         self.root.minsize(700, 500)
 
-        logging.basicConfig(filename="image_processor_app.log", level=logging.INFO,
+        logging.basicConfig(filename="GrayScaler.log", level=logging.INFO,
                             format="%(asctime)s - %(levelname)s - %(message)s")
         self.log_queue = deque(maxlen=200)
 
@@ -197,20 +36,20 @@ class ImageProcessingApp(object):
 
         # --- Button Styling ---
         self.button_corner_radius = 8
-        self.button_fg_color = ("#5DADE2", "#2E86C1")  # (light_mode, dark_mode)
+        self.button_fg_color = ("#5DADE2", "#2E86C1")  
         self.button_hover_color = ("#85C1E9", "#3498DB")
         self.button_text_color = ("#FFFFFF", "#FFFFFF")
         self.button_border_width = 0
         self.button_border_spacing = 5
 
         self.create_widgets()
-        self.update_log_display_periodically() # Start log display updates
+        self.update_log_display_periodically() 
 
     def create_widgets(self):
         """
         Creates the UI elements.
         """
-        self.root.grid_columnconfigure(1, weight=1) # Allow entry fields to expand
+        self.root.grid_columnconfigure(1, weight=1) 
 
         # --- Input Folder Selection ---
         self.input_folder_label = ctk.CTkLabel(self.root, text="Monitor Folder:")
@@ -271,14 +110,14 @@ class ImageProcessingApp(object):
 
         self.log_text = ctk.CTkTextbox(self.root, state="disabled", height=150, wrap="word")
         self.log_text.grid(row=4, column=0, columnspan=3, padx=20, pady=(0,10), sticky="nsew")
-        self.root.grid_rowconfigure(4, weight=1) # Make log expandable
+        self.root.grid_rowconfigure(4, weight=1) 
 
         # --- Status Label ---
         self.status_label = ctk.CTkLabel(self.root, text="Status: Idle", text_color="gray", font=("Arial", 12, "italic"))
         self.status_label.grid(row=5, column=0, columnspan=3, padx=20, pady=(5,10), sticky="w")
 
         # --- Status Label ---
-        self.Creator_label = ctk.CTkLabel(self.root, text="Creator : Aby | Contact information kuldeepsinah@calcomp.co.th", text_color="gray", font=("Arial", 12, "bold"))
+        self.Creator_label = ctk.CTkLabel(self.root, text="Creator : Aby | Contact information shergillkuldeep@outlook.com", text_color="gray", font=("Arial", 12, "bold"))
         self.Creator_label.grid(row=6, column=0, columnspan=3, padx=20, pady=(5,10), sticky="w")
 
 
@@ -390,7 +229,6 @@ class ImageProcessingApp(object):
         log_entry = f"{timestamp} - {message}"
         self.log_queue.append(log_entry)
         logging.info(message)
-        # UI update for log_text is handled by update_log_display_periodically
 
     def update_log_display_periodically(self):
         """
@@ -404,14 +242,14 @@ class ImageProcessingApp(object):
         current_log_content = self.log_text.get("1.0", ctk.END).strip()
         new_log_entries = "\n".join(list(self.log_queue))
 
-        if current_log_content != new_log_entries: # Update only if changed
+        if current_log_content != new_log_entries: 
             self.log_text.delete("1.0", ctk.END)
-            for log_entry in self.log_queue: # Iterate over a copy
+            for log_entry in self.log_queue: 
                 self.log_text.insert(ctk.END, log_entry + "\n")
-            self.log_text.see(ctk.END) # Scroll to the end
+            self.log_text.see(ctk.END) 
         self.log_text.configure(state="disabled")
 
-        self.root.after(500, self.update_log_display_periodically) # Update every 0.5 seconds
+        self.root.after(500, self.update_log_display_periodically) 
 
 
     def on_closing(self):
@@ -424,7 +262,7 @@ class ImageProcessingApp(object):
                 self.stop_watching()
                 self.root.destroy()
             else:
-                return # Don't close
+                return 
         else:
             self.root.destroy()
 
