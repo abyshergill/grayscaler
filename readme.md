@@ -58,7 +58,7 @@ Those people who want to use this program in `production with real time without 
 3.  Navigate to the directory where you saved the file.
 4.  Run the script using:
     ```bash
-    python image_processor_app.py
+    python main.py
     ```
     This will launch the graphical user interface.
 
