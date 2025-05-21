@@ -30,7 +30,7 @@ This program is beneficial for anyone who:
 * **Supported Image Formats:** Processes common image types like PNG, JPG, JPEG, GIF, and BMP.
 
 ## Without Python
-Those people who want to use this program in `production with real time without installing the python can get binary/exe. can contact me`
+Those people who want to use this program in production with real time `without installing the python can get grayscaler.exe` . Contact me below 
   ```
   Email : shergillkuldeep@outlook.com
   ```
@@ -48,12 +48,12 @@ Those people who want to use this program in `production with real time without 
 1.  Ensure you have Python 3 installed on your system.
 2.  Install the required libraries using pip:
     ```bash
-    pip install opencv-python customtkinter
+    pip install -r requirements.txt
     ```
 
 ## How to Run
 
-1.  Save the program code as a Python file (e.g., `image_processor_app.py`).
+1.  Save the program code as a Python file (e.g., `main.py`).
 2.  Open a terminal or command prompt.
 3.  Navigate to the directory where you saved the file.
 4.  Run the script using:

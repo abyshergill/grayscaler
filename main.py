@@ -4,12 +4,15 @@ from tkinter import filedialog, messagebox
 from collections import deque
 import threading
 import logging
-import datetime
+from datetime import datetime, timedelta, date
 
 
 #From utility Module
 from utility import FileWatcher 
 from utility import ImageProcessor
+
+#--- Global Varibalbe for the logs directory----
+LOGS_DIRECTORY = "app_run_logs"
 
 class ImageProcessingApp(object):
     """
@@ -22,11 +25,10 @@ class ImageProcessingApp(object):
         self.root = root_window
         self.root.title("GrayScaler Converter")
         self.root.geometry("750x550")
-        self.root.iconbitmap(r"icon\icon.png")
+        self.root.iconbitmap(r"icon\logo.ico")
         self.root.minsize(700, 500)
 
-        logging.basicConfig(filename="GrayScaler.log", level=logging.INFO,
-                            format="%(asctime)s - %(levelname)s - %(message)s")
+        self.setup_logging()
         self.log_queue = deque(maxlen=200)
 
         self.watcher_thread = None
@@ -44,6 +46,39 @@ class ImageProcessingApp(object):
 
         self.create_widgets()
         self.update_log_display_periodically() 
+	
+    def setup_logging(self):
+        """
+        Configures logging to create a new timestamped log file in a 'logs' directory
+        for each application run.
+        """
+        if not os.path.exists(LOGS_DIRECTORY):
+            try:
+                os.makedirs(LOGS_DIRECTORY)
+            except OSError as e:
+                print(f"CRITICAL: Could not create logs directory '{LOGS_DIRECTORY}': {e}")
+                return
+
+        current_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_filename = f"app_session_{current_time_str}.log"
+        log_filepath = os.path.join(LOGS_DIRECTORY, log_filename)
+
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+
+        for handler in logger.handlers[:]:
+            logger.removeHandler(handler)
+            handler.close()
+
+        try:
+            file_handler = logging.FileHandler(log_filepath, mode='w')
+            formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(module)s - %(message)s")
+            file_handler.setFormatter(formatter)
+            logger.addHandler(file_handler)
+        except IOError as e:
+            print(f"CRITICAL: Could not create file handler for '{log_filepath}': {e}")
+
+        logging.info(f"Logging initialized. Log file: {log_filepath}")
 
     def create_widgets(self):
         """
@@ -117,7 +152,7 @@ class ImageProcessingApp(object):
         self.status_label.grid(row=5, column=0, columnspan=3, padx=20, pady=(5,10), sticky="w")
 
         # --- Status Label ---
-        self.Creator_label = ctk.CTkLabel(self.root, text="Creator : Aby | Contact information shergillkuldeep@outlook.com", text_color="gray", font=("Arial", 12, "bold"))
+        self.Creator_label = ctk.CTkLabel(self.root, text="Creator : Aby | Repo : github.com/abyshergill | License : Apache 2.0", text_color="gray", font=("Arial", 12, "bold"))
         self.Creator_label.grid(row=6, column=0, columnspan=3, padx=20, pady=(5,10), sticky="w")
 
 
@@ -225,7 +260,7 @@ class ImageProcessingApp(object):
         Adds a message to the log queue for display and logs it to file.
         This method is thread-safe for appending to deque and logging.
         """
-        timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"{timestamp} - {message}"
         self.log_queue.append(log_entry)
         logging.info(message)
